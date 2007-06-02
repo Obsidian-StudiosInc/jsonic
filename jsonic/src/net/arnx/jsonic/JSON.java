@@ -233,7 +233,7 @@ public class JSON {
 	 * Encodes a object into a json string.
 	 * 
 	 * @param source a object to encode.
-	 * @param prettyPrint output a json string with indent, space or break.
+	 * @param indent output a json string with indent, space or break.
 	 * @return a json string
 	 */
 	public static String encode(Object source, boolean prettyPrint) {
@@ -249,8 +249,8 @@ public class JSON {
 	 * @return a decoded object
 	 * @exception ParseException if the beginning of the specified string cannot be parsed.
 	 */
-	public static Object decode(String source) throws ParseException {
-		return (new JSON()).parse(source);
+	public static Object decode(String str) throws ParseException {
+		return (new JSON()).parse(str);
 	}
 	
 	/**
@@ -1429,9 +1429,9 @@ public class JSON {
 					}
 				}
 			} else if (value != null) {
-				if (c.isAssignableFrom(value.getClass()) && c.equals(type)) {
+				if (value.getClass().isAssignableFrom(c)) {
 					data = value;
-				} else if (Boolean.class.equals(c)) {
+				} else if (c.equals(Boolean.class)) {
 					if (value instanceof Number) {
 						data = !value.equals(0);
 					} else {
@@ -1547,7 +1547,7 @@ public class JSON {
 				} else if (Locale.class.equals(c)) {
 					String[] s = null;
 					if (value instanceof Collection || value.getClass().isArray()) {
-						s = (String[])convert(pk, value, String[].class, String[].class);
+						s = (String[])convert(pk, value, String[].class, String.class);
 					} else {
 						s = value.toString().split("\\p{Punct}");
 					}
@@ -1567,17 +1567,16 @@ public class JSON {
 						if (type instanceof ParameterizedType) {
 							ParameterizedType pType = (ParameterizedType)type;
 							Type[] cTypes = pType.getActualTypeArguments();
-							Type cType = (cTypes != null && cTypes.length > 0) ? cTypes[0] : Object.class;
-							Class cClasses = null;
-							if (cType instanceof ParameterizedType) {
-								cClasses = (Class)((ParameterizedType)cType).getRawType();
-							} else if (cType instanceof Class) {
-								cClasses = (Class)cType;
-							} else {
-								cClasses = Object.class;
+							Class cClasses = Object.class;
+							if (cTypes.length > 0) {
+								if (cTypes[0] instanceof ParameterizedType) {
+									cClasses = (Class)((ParameterizedType)cTypes[0]).getRawType();
+								} else if (cTypes[0] instanceof Class) {
+									cClasses = (Class)cTypes[0];
+								}
 							}
 							for (Object o : (Collection)value) {
-								collection.add(convert(pk, o, cClasses, cType));
+								collection.add(convert(pk, o, cClasses, cTypes[0]));
 							}
 						} else {
 							collection.addAll((Collection)value);
@@ -1588,12 +1587,11 @@ public class JSON {
 					if (value instanceof Collection) {
 						Object array = Array.newInstance(c.getComponentType(), ((Collection)value).size());
 						int i = 0;
-						Class cClass = c.getComponentType();
 						Type cType = (type instanceof GenericArrayType) ? 
-								((GenericArrayType)type).getGenericComponentType() : cClass;
+								((GenericArrayType)type).getGenericComponentType() : null;
 						
 						for (Object o : (Collection)value) {
-							Array.set(array, i++, convert(pk, o, cClass, cType));
+							Array.set(array, i++, convert(pk, o, c.getComponentType(), cType));
 						}
 						data = array;
 					} else if (value instanceof CharSequence && byte.class.equals(c.getComponentType())) {
