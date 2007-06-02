@@ -66,7 +66,7 @@ Hoge hoge = <span class="em">JSON.decode(</span>text, Hoge.class<span class="em"
 </pre>
 
 <h2 id="download">ダウンロード</h2>
-<p>JSONICの現時点での最新バージョンは0.9.2です。</p>
+<p>JSONICの現時点での最新バージョンは0.9.0です。</p>
 <p><a href="http://sourceforge.jp/projects/jsonic/files/">ダウンロードはこちらから</a>できます。なお、JSONICのビルド/実行には、Javaバージョン5.0以上が必要です。</p>
 
 <h2 id="usage">使い方</h2>
@@ -98,23 +98,20 @@ String text = <span class="em">JSON.encode(</span>hoge, true<span class="em">)</
 <table summary="POJOからJSONへの変換ルール">
 <tr><th style="width: 50%">変換元（Java）</th><th style="width: 50%">変換先（JSON）</th></tr>
 <tr><td>Map</td><td rowspan="2">object</td></tr>
-<tr><td>Object<sup>(※1)</sup></td></tr>
+<tr><td>Object</td></tr>
 <tr><td>boolean[], short[], int[], long[], float[], double[], Object[]</td><td rowspan="2">array</td></tr>
 <tr><td>Collection</td></tr>
 <tr><td>char[], CharSequence</td><td rowspan="2">string</td></tr>
 <tr><td>char, Character</td></tr>
 <tr><td>byte[]</td><td>string (BASE64)</td></tr>
 <tr><td>Locale</td><td>string (言語コード-国コード)</td></tr>
-<tr><td>byte, short, int, long, float, double</td><td rowspan="2">number<sup>(※2)</sup></td></tr>
+<tr><td>byte, short, int, long, float, double</td><td rowspan="2">number<sup>(※1)</sup></td></tr>
 <tr><td>Number</td></tr>
 <tr><td>Date, Calendar</td><td>number (1970年からのミリ秒)</td></tr>
 <tr><td>boolean, Boolean</td><td>true/false</td></tr>
 <tr><td>null</td><td>null</td></tr>
 </table>
-<div class="caption">
-(※1) 対象となるインスタンスをパブリック・getterメソッド、パブリック・フィールドの優先順で探索します。staticが付加されたメソッドやフィールド、transientが付加されたフィールドは対象となりません。<br />
-(※2) NaN, Infinity, -Infinityに限りそれぞれ文字列"NaN", "Infinity", "-Infinity"に変換されます。
-</div>
+<div class="caption">(※1) NaN, Infinity, -Infinityに限りそれぞれ文字列"NaN", "Infinity", "-Infinity"に変換されます。</div>
 <p>なお、JSONのルートはobjectかarrayでなければなりません。このため、直接、intやStringのインスタンスをencodeメソッドの引数にしてもエラーとなり変換できません。この制約は後述の拡張モードをONにすることで解除することが可能です。</p>
 
 <h4>■ decodeメソッド <span class="subtitle">- JSONからPOJOへの変換</span></h4>
@@ -136,16 +133,14 @@ Hoge hoge = <span class="em">JSON.decode(</span>"{\"number\": 10, \"array\": [1,
 <tr><td>CharSequence, String</td><td>String</td></tr>
 <tr><td>Appendable</td><td>StringBuilder</td></tr>
 <tr><td>その他のAppendableを継承する型</td><td>指定された型（文字列化したものをappend）</td></tr>
-<tr><td>その他の型</td><td>指定された型（パブリック・フィールド／プロパティに値をセット)<sup>(※3)</sup></td></tr>
+<tr><td>その他の型</td><td>指定された型（パブリック・フィールド／プロパティに値をセット)</td></tr>
 <tr><td rowspan="6">array</td><td>なし, Object, Collection, List</td><td>ArrayList</td></tr>
 <tr><td>Set</td><td>HashSet</td></tr>
 <tr><td>SortedSet</td><td>TreeSet</td></tr>
 <tr><td>その他のCollectionを継承する型</td><td>指定された型</td></tr>
 <tr><td>short[], byte[], int[], long[], float[], double[], Object[]</td><td>指定された型</td></tr>
 <tr><td>Locale</td><td>Locale（「言語コード」「国コード」「バリアントコード」からなる配列とみなし変換）</td></tr>
-<tr><td rowspan="10">string</td><td>なし, Object, CharSequence, String</td><td>String</td></tr>
-<tr><td>char</td><td>char（幅0の時は'\u0000', 2文字以上の時は1文字目）</td></tr>
-<tr><td>Character</td><td>Character（幅0の時はnull, 2文字以上の時は1文字目）</td></tr>
+<tr><td rowspan="8">string</td><td>なし, Object, char,<br />Character, CharSequence, String</td><td>String</td></tr>
 <tr><td>Appendable</td><td>StringBuilder</td></tr>
 <tr><td>その他のAppendableを継承する型</td><td>指定された型（文字列化したものをappend）</td></tr>
 <tr><td>Dateを継承する型,<br />Calendarを継承する型</td><td>指定された型（文字列をDateFormatで変換）</td></tr>
@@ -157,8 +152,7 @@ Hoge hoge = <span class="em">JSON.decode(</span>"{\"number\": 10, \"array\": [1,
 <tr><td>byte, short, int, long, float, double,<br />Byte, Short, Integer, Long, Float, Double,<br />BigInteger</td><td>指定された型</td></tr>
 <tr><td>Dateを継承する型,<br />Calendarを継承する型</td><td>指定された型（数値を1970年からのミリ秒とみなし変換）</td></tr>
 <tr><td>boolean, Boolean</td><td>指定された型（0以外の時true、0の時false）</td></tr>
-<tr><td rowspan="5">true/false</td><td>なし, Object, Boolean</td><td>Boolean</td></tr>
-<tr><td>char, Character</td><td>指定された型（trueの時'1'、falseの時'0'）</td></tr>
+<tr><td rowspan="4">true/false</td><td>なし, Object, Boolean</td><td>Boolean</td></tr>
 <tr><td>float, double, Float, Double</td><td>指定された型（trueの時1.0、falseの時NaN）</td></tr>
 <tr><td>byte, short, int, long,<br />Byte, Short, Integer, Long,<br />BigInteger, その他のNumberを継承する型</td><td>指定された型（trueの時1、falseの時0）</td></tr>
 <tr><td>boolean</td><td>boolean</td></tr>
@@ -167,9 +161,6 @@ Hoge hoge = <span class="em">JSON.decode(</span>"{\"number\": 10, \"array\": [1,
 <tr><td>boolean</td><td>false</td></tr>
 <tr><td>char</td><td>'\u0000'</td></tr>
 </table>
-<div class="caption">
-(※1) 対象となるインスタンスに対しパブリックなsetterメソッド、パブリックなフィールドの優先順で探索します。staticが付加されたメソッドやフィールド、transientが付加されたフィールドは対象となりません。<br />
-</div>
 
 <h3>高度な使い方</h3>
 <p>JSONICでは、フレームワークなどでの利用を想定していくつかの便利な機能を用意しています。</p>
@@ -278,37 +269,12 @@ JSON json = new JSON() {
 };
 </pre>
 
-
 <h4 id="maxdepth">■ setMaxDepth <span class="subtitle">- 最大深度の設定</span></h4>
 <p>JSONICは、encode/format時に自分自身を戻すようなフィールドやプロパティ、配列を無視することで再帰による無限ループが発生することを防ぎます。しかし、そのインスタンスにとって孫に当たるクラスが自分のインスタンスを返す場合にも再帰が発生してしまいます。JSONICでは、このような場合へ対処するため単純に入れ子の深さに制限を設けています。</p>
 <p>この最大深度は、デフォルトでは255に設定されていますが変更することも可能です。</p>
 <pre class="source">
 <span class="comment">// 5階層以下の情報は取得しない</span>
 json<span class="em">.setMaxDepth(</span>5<span class="em">)</span>;
-</pre>
-
-<h3>JSON-RPC Servlet</h3>
-<p><a href="http://json-rpc.org/">JSON-RPC</a>は、JSONを使ったシンプルなRemote Procedure Callプロトコルです。JSONRPCServletを使うことでJSON-RPCを利用することが可能です（注：現時点のものは簡易実装です。仕様を完全に満たせているわけではありません）。<br />
-JSON-RPCを利用するには、web.xmlに下記のような設定を記載するとservlet pathが呼び出されたとき、class nameで指定されたクラスのメソッドが呼び出されます。詳しい使い方は付属のサンプルをご覧ください。</p>
-<pre class="source">
-&lt;servlet&gt;
-    &lt;servlet-name&gt;JSON-RPC&lt;/servlet-name&gt;
-    &lt;servlet-class&gt;net.arnx.jsonic.JSONRPCServlet&lt;/servlet-class&gt;
-    &lt;init-param&gt;
-        &lt;param-name&gt;config&lt;/param-name&gt;
-        &lt;param-value&gt;
-            {
-                "servlet path" : "class name",
-                ...
-            }
-        &lt;/param-value&gt;
-    &lt;/init-param&gt;
-&lt;/servlet&gt;
-
-&lt;servlet-mapping&gt;
-    &lt;servlet-name&gt;JSON-RPC&lt;/servlet-name&gt;
-    &lt;url-pattern&gt;*.json&lt;/url-pattern&gt;
-&lt;/servlet-mapping&gt;
 </pre>
 
 <h2 id="license">ライセンス</h2>
@@ -319,22 +285,7 @@ JSON-RPCを利用するには、web.xmlに下記のような設定を記載す�
 <p>バグや要望などは<a href="http://sourceforge.jp/projects/jsonic">JSONICプロジェクトサイト</a>のトラッキング情報あるいはフォーラムまでご連絡ください。</p>
 
 <h2 id="releasenote">リリースノート</h2>
-
-<h3>2007/06/03 version 0.9.2</h3>
-<p>下記のバグ修正と機能追加を行いました。</p>
-<ul>
-<li>継承の比較順序が逆になっており、convert時に変換元が変換先のClassを継承している場合にnullに変換されていたバグを修正</li>
-<li>JSON-RPCの簡易実装を追加しました（JSONRPCServlet）</li>
-</ul>
-
-<h3>2007/06/02 version 0.9.1</h3>
-<p>下記のバグ修正と機能追加を行いました。</p>
-<ul>
-<li>charとCharacterでboolean値の変換規則に一貫性を持たせるように変更</li>
-<li><del>inner</del>public以外のclassであっても、引数に指定されたクラスと同一のパッケージ内であれば、encode/decodeするように対応</li>
-</ul>
-
-<h3>2007/05/27 version 0.9.0</h3>
+<h3>2007/05/27</h3>
 <p>今まで日記上でほそぼそと公開していたSimple JSON Class for Javaを仕様などを整理し名前も新たに0.9にリバージョンして公開（機能面での変更はありませんが、微妙に変換ルールや仕様を調整してあります）。</p>
 </div>
 
