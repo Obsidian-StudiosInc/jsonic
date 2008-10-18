@@ -23,6 +23,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.web.context.support.WebApplicationContextUtils;
 
+@SuppressWarnings("unchecked")
 public class SpringContainer extends Container {
 	private static Log log = LogFactory.getLog(SpringContainer.class);
 	
@@ -42,6 +43,11 @@ public class SpringContainer extends Container {
 		
 		return component;
 	}
+	
+	@Override
+	public boolean isDebugMode() {
+		return (debug != null) ? debug : false;
+	}
 
 	@Override
 	public void debug(String message) {
@@ -50,10 +56,6 @@ public class SpringContainer extends Container {
 
 	@Override
 	public void error(String message, Throwable e) {
-		if (e != null) {
-			log.error(message, e);
-		} else {
-			log.error(message);
-		}
+		log.error(message, e);
 	}
 }

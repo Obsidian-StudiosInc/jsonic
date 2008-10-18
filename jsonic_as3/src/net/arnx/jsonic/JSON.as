@@ -16,6 +16,7 @@
 
 package net.arnx.jsonic {
 	import flash.utils.ByteArray;
+	import flash.utils.Proxy;
 	
 	import mx.collections.ArrayCollection;
 	import mx.resources.IResourceManager;
@@ -215,8 +216,8 @@ package net.arnx.jsonic {
 		
 		private function _parseObject(s:IParserSource, level:int):Object {
 			var point:int = 0; // 0 '{' 1 'key' 2 ':' 3 '\n'? 4 'value' 5 '\n'? 6 ',' ... '}' E
-			var map:Object = (level <= _maxDepth) ? {} : null;
-			var key:Object = null;
+			var map:Object = {};
+			var key:String = null;
 			var value:Object = null;
 			var start:String = '\0';
 			
@@ -314,12 +315,26 @@ package net.arnx.jsonic {
 						point = 1;
 					} else if (point == 1 || point == 6) {
 						s.back();
-						key = ((c == '-') || (c >= '0' && c <= '9')) ? _parseNumber(s) : _parseLiteral(s);
+						key = _parseLiteral(s);
 						point = 2;
 					} else if (point == 3) {
-						s.back();
-						value = ((c == '-') || (c >= '0' && c <= '9')) ? _parseNumber(s) : _parseLiteral(s);
-						if (level < _maxDepth) map[key] = value;
+						if ((c == '-') || (c >= '0' && c <= '9')) {
+							s.back();
+							value = _parseNumber(s);
+							if (level < _maxDepth) map[key] = value;
+						} else {
+							s.back();
+							var literal:String = _parseLiteral(s);
+							if (literal == "null") {
+								map[key] = null;
+							} else if (literal == "true") {
+								map[key] = true;
+							} else if (literal == "false") {
+								map[key] = false;
+							} else {
+								map[key] = literal;
+							}
+						}
 						point = 5;
 					} else {
 						throw createParseException(getMessage("json.parse.UnexpectedChar", c), s);
@@ -420,12 +435,28 @@ package net.arnx.jsonic {
 					break;
 				default:
 					if (point == 1 || point == 3) {
-						s.back();
-						value = ((c == '-') || (c >= '0' && c <= '9')) ? _parseNumber(s) : _parseLiteral(s);
-						if (level < _maxDepth) list.push(value);
+						if ((c == '-') || (c >= '0' && c <= '9')) {
+							s.back();
+							value = _parseNumber(s);
+							if (level < _maxDepth) list.push(value);
+						} else {
+							s.back();
+							var literal:String = _parseLiteral(s);
+							if (level < _maxDepth) {
+								if (literal == "null") {
+									list.push(null);
+								} else if (literal == "true") {
+									list.push(true);
+								} else if (literal == "false") {
+									list.push(false);
+								} else {
+									list.push(literal);
+								}
+							}
+						}
 						point = 2;
 					} else {
-						throw createParseException(getMessage("json.parse.UnexpectedChar", c), s);						
+						throw createParseException(getMessage("json.parse.UnexpectedChar", c), s);
 					}
 				}
 			}
@@ -488,7 +519,7 @@ package net.arnx.jsonic {
 			return sb.toString();
 		}
 		
-		private function _parseLiteral(s:IParserSource):Object {
+		private function _parseLiteral(s:IParserSource):String {
 			var point:int = 0; // 0 'IdStart' 1 'IdPart' ... !'IdPart' E
 			var sb:ByteArray = s.getCachedBuilder();
 			
@@ -511,14 +542,7 @@ package net.arnx.jsonic {
 					break loop;
 				}
 			}
-			
-			var str:String = sb.toString();
-			
-			if ("null" == str) return null;
-			if ("true" == str) return true;
-			if ("false" == str) return false;
-			
-			return str;
+			return sb.toString();
 		}	
 		
 		private function _parseNumber(s:IParserSource):Number {

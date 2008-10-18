@@ -29,6 +29,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,6 +53,7 @@ import net.arnx.jsonic.JSONParseException;
 
 import static javax.servlet.http.HttpServletResponse.*;
 
+@SuppressWarnings("unchecked")
 public class WebServiceServlet extends HttpServlet {
 	private static final long serialVersionUID = -63348112220078595L;
 	
@@ -61,7 +63,6 @@ public class WebServiceServlet extends HttpServlet {
 		public Boolean expire;
 		public Map<String, String> mappings;
 		public Map<String, Pattern> definitions;
-		public String repository;
 	}
 	
 	private Container container;
@@ -81,7 +82,7 @@ public class WebServiceServlet extends HttpServlet {
 		try {
 			config = json.parse(configText, Config.class);
 			if (config.container == null) config.container = Container.class;
-			
+
 			container = (Container)json.parse(configText, config.container);
 			container.init(getServletContext());
 		} catch (Exception e) {
@@ -95,23 +96,6 @@ public class WebServiceServlet extends HttpServlet {
 		if (config.mappings != null) {
 			for (Map.Entry<String, String> entry : config.mappings.entrySet()) {
 				mappings.add(new RouteMapping(entry.getKey(), entry.getValue(), config.definitions));
-			}
-		}
-		
-		if (config.repository != null) {
-			try {
-				File repo = new File(config.repository);
-				if (!repo.isAbsolute()) {
-					repo = new File(servletConfig.getServletContext().getRealPath("/"), config.repository);
-				}
-				
-				if (!repo.exists()) container.error("repository is not found: " + config.repository, null);
-				if (!repo.isDirectory()) container.error("repository is not a directory: " + config.repository, null);
-				if (!repo.canWrite()) container.error("repository is not writable: " + config.repository, null);
-				
-				config.repository = repo.getCanonicalPath();
-			} catch (Exception e) {
-				container.error("cannot access repository: " + config.repository, e);
 			}
 		}
 	}
@@ -141,7 +125,7 @@ public class WebServiceServlet extends HttpServlet {
 			response.setCharacterEncoding(encoding);
 		}
 		
-		// set expiration
+		// set expilation
 		if (expire != null && expire) {
 			response.setHeader("Cache-Control","no-cache");
 			response.setHeader("Pragma","no-cache");
@@ -164,37 +148,28 @@ public class WebServiceServlet extends HttpServlet {
 			return null;
 		}
 		
-		Route route = null;
 		for (RouteMapping m : mappings) {
-			if ((route = m.matches(request, uri)) != null) {
-				break;
+			Route route = m.matches(request.getMethod(), uri);
+			if (route != null) {
+				container.debug("route found: " + request.getMethod() + " " + uri);
+				return route;
 			}
 		}
-		
-		if (route == null) {
-			response.sendError(SC_NOT_FOUND, "Not Found");
-			return null;
-		}
-		
-		String method = route.getMethod();
-		if (!method.equals("GET") && !method.equals("POST") && !method.equals("PUT") && !method.equals("DELETE")) {
-			response.sendError(SC_FORBIDDEN, "Method Not Allowed");
-			return null;
-		}
-		
-		container.debug("route found: " + request.getMethod() + " " + uri);
-		return route;
+		response.sendError(SC_NOT_FOUND, "Not Found");
+		return null;
 	}
 	
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response)
 			throws ServletException, IOException {		
 		Route route = preprocess(request, response);
-		if (route == null) return;
 		
-		if (route.isRpcMode()) {
+		if (route == null) {
+			return;
+		} else if ("rpc".equalsIgnoreCase(route.get("class"))) {
 			response.addHeader("Allow", "POST");
 			response.sendError(SC_METHOD_NOT_ALLOWED, "Method Not Allowd");
+			return;
 		} else {
 			doREST(route, request, response);
 		}
@@ -204,12 +179,24 @@ public class WebServiceServlet extends HttpServlet {
 	protected void doPost(HttpServletRequest request, HttpServletResponse response)
 			throws ServletException, IOException {
 		Route route = preprocess(request, response);
-		if (route == null) return;
-
-		if (route.isRpcMode()) {
+		
+		if (route == null) {
+			return;
+		} else if ("rpc".equalsIgnoreCase(route.get("class"))) {
 			doRPC(route, request, response);
 		} else {
-			doREST(route, request, response);
+			String method = request.getParameter("_method");
+			if (method == null) method = request.getMethod();
+			if (method.equalsIgnoreCase("GET") 
+				|| method.equalsIgnoreCase("POST")
+				|| method.equalsIgnoreCase("PUT")
+				|| method.equalsIgnoreCase("DELETE")) {
+				route.setMethod(method);
+				doREST(route, request, response);
+			} else {
+				response.sendError(SC_METHOD_NOT_ALLOWED, "Method Not Allowed");
+				return;
+			}
 		}
 	}
 
@@ -217,9 +204,10 @@ public class WebServiceServlet extends HttpServlet {
 	protected void doPut(HttpServletRequest request, HttpServletResponse response)
 			throws ServletException, IOException {
 		Route route = preprocess(request, response);
-		if (route == null) return;
 		
-		if (route.isRpcMode()) {
+		if (route == null) {
+			return;
+		} else if ("rpc".equalsIgnoreCase(route.get("class"))) {
 			response.addHeader("Allow", "POST");
 			response.sendError(SC_METHOD_NOT_ALLOWED, "Method Not Allowed");
 		} else {
@@ -231,9 +219,10 @@ public class WebServiceServlet extends HttpServlet {
 	protected void doDelete(HttpServletRequest request, HttpServletResponse response) 
 		throws ServletException, IOException {
 		Route route = preprocess(request, response);
-		if (route == null) return;
 		
-		if (route.isRpcMode()) {
+		if (route == null) {
+			return;
+		} else if ("rpc".equalsIgnoreCase(route.get("class"))) {
 			response.addHeader("Allow", "POST");
 			response.sendError(SC_METHOD_NOT_ALLOWED, "Method Not Allowed");
 		} else {
@@ -261,7 +250,7 @@ public class WebServiceServlet extends HttpServlet {
 		String errorMessage = null;
 		Throwable throwable = null;
 		
-		try {
+		try {			
 			req = json.parse(request.getReader(), RpcRequest.class);
 			if (req == null || req.method == null || req.params == null) {
 				throwable = new Throwable();
@@ -272,7 +261,8 @@ public class WebServiceServlet extends HttpServlet {
 				if (delimiter <= 0 && delimiter+1 == req.method.length()) {
 					throw new NoSuchMethodException(req.method);
 				} else {
-					Object component = container.getComponent(route.getComponentClass(req.method.substring(0, delimiter)));
+					route.put("class", req.method.substring(0, delimiter));
+					Object component = container.getComponent(route.getComponentClass());
 					if (component == null) {
 						throw new NoSuchMethodException(req.method);
 					}
@@ -366,22 +356,23 @@ public class WebServiceServlet extends HttpServlet {
 		}
 	}
 	
+	@SuppressWarnings("unchecked")
 	protected void doREST(Route route, HttpServletRequest request, HttpServletResponse response)
 		throws ServletException, IOException {
 		
-		String methodName = route.getMethod().toLowerCase();
+		String methodName = route.getMethod();
 		int status = SC_OK;
 		String callback = null;
 		
-		if ("GET".equals(route.getMethod())) {
+		if ("get".equals(route.getMethod())) {
 			methodName = "find";
-			callback = route.getParameter("callback");
-		} else if ("POST".equals(route.getMethod())) {
+			callback = request.getParameter("callback");
+		} else if ("post".equals(route.getMethod())) {
 			methodName = "create";
 			status = SC_CREATED;
-		} else if ("PUT".equals(route.getMethod())) {
+		} else if ("put".equals(route.getMethod())) {
 			methodName = "update";
-		} else if ("DELETE".equals(route.getMethod())) {
+		} else if ("delte".equals(route.getMethod())) {
 			methodName = "delete";
 		}
 		
@@ -391,29 +382,31 @@ public class WebServiceServlet extends HttpServlet {
 		
 		Object res = null;
 		try {
-			Object component = container.getComponent(route.getComponentClass(null));
+			Object component = container.getComponent(route.getComponentClass());
 			if (component == null) {
 				response.sendError(SC_NOT_FOUND, "Not Found");
 				return;
 			}
 			
 			List<Object> params = null;
-			if (!route.hasJSONContent()) {
-				params = new ArrayList(1);
-				params.add(route.getParameterMap());
+			if ("get".equals(route.getMethod())) {
+				params = new ArrayList<Object>();
+				Map<String, Object> contents = getParameterMap(request);
+				contents.putAll(route);
+				params.add(contents);
 			} else {
 				Object o = json.parse(request.getReader());
 				if (o instanceof List) {
 					params = (List)o;
-					if (params.isEmpty()) {
-						params = new ArrayList(1);
-						params.add(route.getParameterMap());
-					} else if (params.get(0) instanceof Map) {
-						params.set(0, route.mergeParameterMap((Map<Object, Object>)params.get(0)));
-					}
+					Map<String, Object> contents = getParameterMap(request);
+					contents.putAll(route);
+					params.add(contents);
 				} else if (o instanceof Map) {
-					params = new ArrayList(1);
-					params.add(route.mergeParameterMap((Map<Object, Object>)o));
+					Map<String, Object> contents = (Map)o;
+					contents.putAll(getParameterMap(request));
+					contents.putAll(route);
+					params = new ArrayList<Object>();
+					params.add(contents);
 				} else {
 					throw new IllegalArgumentException("failed to convert parameters from JSON.");
 				}
@@ -454,8 +447,7 @@ public class WebServiceServlet extends HttpServlet {
 			return;
 		}
 		
-		try {
-			response.setContentType((callback != null) ? "text/javascript" : "application/json");
+		try {		
 			if (res == null
 					|| res instanceof CharSequence
 					|| res instanceof Boolean
@@ -464,6 +456,8 @@ public class WebServiceServlet extends HttpServlet {
 				if (status != SC_CREATED) status = SC_NO_CONTENT;
 				response.setStatus(status);
 			} else {
+				response.setContentType((callback != null) ? "text/javascript" : "application/json");
+			
 				Writer writer = response.getWriter();
 				json.setPrettyPrint(container.isDebugMode());
 				
@@ -476,6 +470,53 @@ public class WebServiceServlet extends HttpServlet {
 			response.sendError(SC_INTERNAL_SERVER_ERROR, "Internal Server Error");
 			return;
 		}		
+	}
+	
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> getParameterMap(HttpServletRequest request) {
+		Map<String, Object> result = new LinkedHashMap<String, Object>();
+		
+		for (Enumeration<String> e = request.getParameterNames(); e.hasMoreElements(); ) {
+			String name = e.nextElement();
+			String[] values = request.getParameterValues(name);
+			
+			int start = 0;
+			char old = '\0';
+			Map<String, Object> current = result;
+			for (int i = 0; i < name.length(); i++) {
+				char c = name.charAt(i);
+				if (c == '.' || c == '[') {
+					String key = name.substring(start, (old == ']') ? i-1 : i);
+					Object target = current.get(key);
+					
+					if (!(target instanceof Map)) {
+						Map<String, Object> map = new LinkedHashMap<String, Object>();
+						if (target != null) map.put("", target);
+						current.put(key, map);
+						current = map;
+					} else {
+						current = (Map<String, Object>)target;
+					}
+					start = i+1;
+				}
+				old = c;
+			}
+			
+			Object value = null;
+			if (values == null || values.length == 0) {
+				value = null;
+			} else if (values.length == 1) {
+				value = values[0];
+			} else {
+				List list = new ArrayList(values.length);
+				for (String str : values) list.add(str);
+				value = list;
+			}
+			
+			current.put(name.substring(start, (old == ']') ? name.length()-1 : name.length()), value);
+		}
+		
+		return result;
 	}
 	
 	@Override
@@ -644,29 +685,72 @@ class RouteMapping {
 		this.target = target;
 	}
 	
-	public Route matches(HttpServletRequest request, String path) throws IOException {
+	public Route matches(String method, String path) {
 		Matcher m = pattern.matcher(path);
 		if (m.matches()) {
-			Map<String, Object> params = new HashMap<String, Object>(); 
+			Route route = new Route(method, target);
 			for (int i = 0; i < names.size(); i++) {
-				String key = names.get(i);
-				Object value = m.group(i+1);
-				if (params.containsKey(key)) {
-					Object target = params.get(key);
-					if (target instanceof List) {
-						((List)target).add(value);
-					} else {
-						List list = new ArrayList(2);
-						list.add(target);
-						list.add(value);
-					}
-				} else {
-					params.put(key, value);
-				}
+				route.put(names.get(i), m.group(i+1));
 			}
-			Route route = new Route(request, target, params);
 			return route;
 		}
 		return null;
+	}
+}
+
+class Route extends HashMap<String, String> {
+	private static final long serialVersionUID = 9001379442185239302L;
+	
+	private static final Pattern REPLACE_PATTERN = Pattern.compile("\\$\\{(\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}*)\\}");
+	private String target;
+	private String method;
+	
+	public Route(String method, String target) {
+		this.method = method.toLowerCase();
+		this.target = target;
+	}
+	
+	public void setMethod(String method) {
+		this.method = method.toLowerCase();
+	}
+	
+	public String getMethod() {
+		return method;
+	}
+	
+	public String getComponentClass() {
+		Matcher m = REPLACE_PATTERN.matcher(target);
+		StringBuffer sb = new StringBuffer();
+		while (m.find()) {
+			String key = m.group(1);
+			String value = remove(key);
+			if (value == null) {
+				value = "";
+			} else if (key.equals("class")) {
+				value = toUpperCamel(value);
+			} else if (key.equals("package")) {
+				value = value.replace('/', '.');
+			}
+			m.appendReplacement(sb, value);
+		}
+		m.appendTail(sb);
+		return sb.toString();
+	}
+	
+	private String toUpperCamel(String name) {
+		StringBuilder sb = new StringBuilder(name.length());
+		boolean toUpperCase = true;
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c == ' ' || c == '_' || c == '-') {
+				toUpperCase = true;
+			} else if (toUpperCase) {
+				sb.append(Character.toUpperCase(c));
+				toUpperCase = false;
+			} else {
+				sb.append(c);
+			}
+		}
+		return sb.toString();
 	}
 }

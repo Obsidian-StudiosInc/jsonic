@@ -31,7 +31,7 @@ public class Container {
 	}
 
 	public boolean isDebugMode() {
-		return (debug != null) ? debug : false;
+		return debug;
 	}
 	
 	public Object getComponent(String className) throws Exception {
@@ -43,17 +43,11 @@ public class Container {
 	}
 
 	public void debug(String message) {
-		if (isDebugMode()) {
-			context.log(message);
-		}
+		context.log(message);
 	}
 	
 	public void error(String message, Throwable e) {
-		if (e != null) {
-			context.log(message, e);
-		} else {
-			context.log(message);
-		}
+		context.log(message, e);
 	}
 
 	public void destory() {
